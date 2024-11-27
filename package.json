@@ -1,0 +1,22 @@
+{
+  "name": "panzerspeed",
+  "version": "1.0.0",
+  "description": "A javascript game based on mobile game ads",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Vincent007super/JSgame.git"
+  },
+  "author": "Vincent Hoogenraat",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Vincent007super/JSgame/issues"
+  },
+  "homepage": "https://github.com/Vincent007super/JSgame#readme",
+  "dependencies": {
+    "three": "^0.170.0"
+  }
+}
