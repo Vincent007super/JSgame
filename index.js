@@ -1,5 +1,7 @@
 import * as THREE from "./node_modules/three/src/Three.js";
 import { GLTFLoader } from "./node_modules/three/examples/jsm/loaders/GLTFLoader.js";
+import { FontLoader } from '/node_modules/three/examples/jsm/loaders/FontLoader.js';
+import { TextGeometry } from './node_modules/three/examples/jsm/geometries/TextGeometry.js';
 
 class Game {
     constructor() {
@@ -10,11 +12,16 @@ class Game {
         this.boss = null;
         this.gates = [];
         this.points = 0;
-        this.winThreshold = 10;
-        this.bossDifficulty = 0;
-        this.mouseX = 0; // Track mouse position
+        this.level = 1; // Player starts at level 1
+        this.pointsToNextLevel = 1; // Points required for the next level
+        this.mouseX = 0;
+        this.levelLength = -30; // How much gates spawn
+        this.bossPosZ;
+        this.gateValue;
+        this.winThreshold = 5;
+        this.minPoints = 1;
+        this.maxPoints = 5;
     }
-
 
     init() {
         // Initialize scene, camera, and renderer
@@ -27,6 +34,8 @@ class Game {
         this.renderer = new THREE.WebGLRenderer();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(this.renderer.domElement);
+
+        this.bossPosZ = -50;
 
         this.addLights();
         this.loadModels();
@@ -46,6 +55,26 @@ class Game {
         this.scene.add(directionalLight);
     }
 
+    updatePlayerLevel() {
+        if (this.points >= this.pointsToNextLevel) {
+            this.level++;
+            this.pointsToNextLevel += this.level; // Increment required points (e.g., 1, 2, 3, ...)
+            this.updatePlayerModel(); // Change player model for new level
+            console.log(`Level Up! New Level: ${this.level}`);
+        }
+    }
+
+    updatePlayerModel() {
+        const loader = new GLTFLoader();
+        loader.load(`./media/models/tank_level${this.level}.glb`, (gltf) => {
+            this.scene.remove(this.player); // Remove the old model
+            this.player = gltf.scene;
+            this.player.scale.set(0.5, 0.5, 0.5);
+            this.player.position.set(0, 0.3, 0); // Maintain position
+            this.scene.add(this.player);
+        });
+    }
+
     loadModels() {
         const loader = new GLTFLoader();
     
@@ -62,16 +91,14 @@ class Game {
         loader.load('./media/models/pak75.glb', (gltf) => {
             this.boss = gltf.scene;
             this.boss.scale.set(1, 1, 1);
-            this.boss.position.set(0, 0.3, -50);
+            this.boss.position.set(0, 0.3, this.bossPosZ);
             this.boss.rotation.y = Math.PI; // Rotate 180 degrees to face backward
             this.scene.add(this.boss);
         });
     }
-    
-    
 
     createRoad() {
-        const roadGeometry = new THREE.PlaneGeometry(10, 100);
+        const roadGeometry = new THREE.PlaneGeometry(10, -this.levelLength + 90);
         const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x98FB98 });
         const road = new THREE.Mesh(roadGeometry, roadMaterial);
         road.rotation.x = -Math.PI / 2;
@@ -80,21 +107,78 @@ class Game {
     }
 
     createGates() {
-        const spacing = 10; // Distance between each pair of gates
-        for (let z = -10; z > -50; z -= spacing) {
-            const positions = [-2.5, 2.5]; // Left and right positions on the road
-            positions.forEach((x, index) => {
-                const gate = new Gate(x, z, index === 0);
-                this.scene.add(gate.mesh);
-                this.gates.push(gate);
-            });
+        const spacing = 10;
+        for (let z = -10; z > this.levelLength; z -= spacing) {
+            const greenGateX = THREE.MathUtils.randFloat(-4, 4);
+            const redGateX = THREE.MathUtils.randFloat(-4, 4);
+    
+            // Use Gate class for green and red gates
+            const greenGate = this.createGate(greenGateX, z, 0x00ff00);
+            const redGate = this.createGate(redGateX, z, 0xff0000);
+    
+            this.gates.push(greenGate, redGate);
         }
     }
 
-    resetGame() {
+    // Create an individual gate with a random value
+    createGate(x, z, color, minPoints, maxPoints) {
+        const isPositive = color === 0x00ff00;
+        const gate = new Gate(x, z, isPositive, undefined, this.minPoints, this.maxPoints); // Use Gate class
+        this.addGateText(gate);
+
+        this.scene.add(gate.mesh);
+        console.log('Creating gate with:', { minPoints, maxPoints, value: this.value });
+        return gate;
+    }
+
+    // Add a text label to a gate showing its value
+    addGateText(gate) {
+        const loader = new FontLoader();
+        loader.load('/node_modules/three/examples/fonts/helvetiker_bold.typeface.json', (font) => {
+            console.log(gate.value)
+            const textGeometry = new TextGeometry(`${gate.value}`, {
+                font: font,
+                size: 0.3,
+                height: 0.1,
+            });
+            const textMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, transparent: true, opacity: 1 });
+            const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+    
+            // Adjust text position above gate for better visibility
+            textMesh.position.set(gate.mesh.position.x - 0.5, gate.mesh.position.y + 2.5, gate.mesh.position.z); 
+            this.scene.add(textMesh);
+        }, undefined, (error) => {
+            console.error('An error occurred while loading the font:', error);
+        });
+    }
+
+    // Check collisions with gates
+    checkGateCollisions() {
+        this.gates = this.gates.filter((gate) => {
+            if (gate.checkCollision(this.player)) {
+                this.scene.remove(gate.mesh); // Remove gate from the scene
+                gate.pointsCalc(this, gate); // Update points in Game class
+                this.updatePlayerLevel(); // Check for level up
+                console.log(`Points: ${this.points}`);
+                return false; // Remove gate from array
+            }
+            return true; // Keep gate
+        });
+    }
+
+    resetGame(lost) {
         this.points = 0;
+        if (lost == false) {
         this.bossDifficulty++;
         this.winThreshold += 5;
+        this.levelLength -= 10;
+        this.minPoints += 2;
+        this.maxPoints += 3;
+        console.log("Boss strength is now " + this.winThreshold);
+        } else {
+            console.log("Try again commander!")
+        }
+        
 
         this.boss.position.set(0, 0.3, -50);
         this.player.position.set(0, 0.3, 0);
@@ -115,9 +199,6 @@ class Game {
             this.player.rotation.y = -Math.PI / 2 + angle; // Offset by 90 degrees to align properly
         }
     }
-    
-    
-    
 
     animate() {
         requestAnimationFrame(() => this.animate());
@@ -132,7 +213,8 @@ class Game {
             this.gates = this.gates.filter(gate => {
                 if (gate.checkCollision(this.player)) {
                     this.scene.remove(gate.mesh);
-                    this.points += gate.isPositive ? 1 : -1;
+                    gate.pointsCalc(this, gate); // Update points in Game class
+                    console.log("Points are now " + this.points)
                     return false;
                 }
                 return true;
@@ -142,10 +224,10 @@ class Game {
             if (this.player.position.z <= this.boss.position.z) {
                 if (this.points >= this.winThreshold) {
                     console.log(`You win! Points: ${this.points}`);
-                    this.resetGame();
+                    this.resetGame(false);
                 } else {
-                    console.log(`You lose! Points: ${this.points}`);
-                    this.resetGame();
+                    console.log(`You lose! Your points: ${this.points}. The bos strength: ${this.winThreshold}`);
+                    this.resetGame(true);
                 }
             }
         }
@@ -167,25 +249,26 @@ class Game {
 }
 
 class Gate {
-    constructor(x, z, isPositive) {
+    constructor( x, z, isPositive, value, minPoints, maxPoints ) {
         this.isPositive = isPositive;
-
-        const gateGeometry = new THREE.BoxGeometry(4.5, 5, 0.2);
-        const gateMaterial = new THREE.MeshStandardMaterial({
-            color: this.isPositive ? 0x00ff00 : 0xff0000
-        });
-        this.mesh = new THREE.Mesh(gateGeometry, gateMaterial);
-        this.mesh.position.set(x, 1, z);
+        this.value = value || THREE.MathUtils.randInt(minPoints, maxPoints); // Random value between minimum points and maximum points
+        this.mesh = new THREE.Mesh(
+            new THREE.BoxGeometry(5, 4.5, 0.1),
+            new THREE.MeshStandardMaterial({ color: this.isPositive ? 0x00ff00 : 0xff0000, opacity: 0.6, transparent: true })
+        );
+        this.mesh.position.set(x, 0.5, z);
     }
 
     checkCollision(player) {
-        return (
-            Math.abs(player.position.z - this.mesh.position.z) < 1 &&
-            Math.abs(player.position.x - this.mesh.position.x) < 1
-        );
+        const playerBox = new THREE.Box3().setFromObject(player);
+        const gateBox = new THREE.Box3().setFromObject(this.mesh);
+        return playerBox.intersectsBox(gateBox); // Check if bounding boxes overlap
+    }
+
+    pointsCalc(game, gate) {
+        game.points += gate.isPositive ? gate.value : -gate.value; // Adjust points in Game class
     }
 }
 
-// Initialize the game
 const game = new Game();
 game.init();
