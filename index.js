@@ -15,6 +15,7 @@ class Game {
         this.mouseX = 0; // Track mouse position
     }
 
+
     init() {
         // Initialize scene, camera, and renderer
         this.scene = new THREE.Scene();
@@ -47,21 +48,27 @@ class Game {
 
     loadModels() {
         const loader = new GLTFLoader();
-
+    
+        // Load Player Tank
         loader.load('./media/models/FT.glb', (gltf) => {
             this.player = gltf.scene;
             this.player.scale.set(0.5, 0.5, 0.5);
             this.player.position.set(0, 0.3, 0);
+            this.player.rotation.y = -Math.PI / 2; // Rotate 90 degrees counterclockwise
             this.scene.add(this.player);
         });
-
+    
+        // Load Boss Gun
         loader.load('./media/models/pak75.glb', (gltf) => {
             this.boss = gltf.scene;
             this.boss.scale.set(1, 1, 1);
             this.boss.position.set(0, 0.3, -50);
+            this.boss.rotation.y = Math.PI; // Rotate 180 degrees to face backward
             this.scene.add(this.boss);
         });
     }
+    
+    
 
     createRoad() {
         const roadGeometry = new THREE.PlaneGeometry(10, 100);
@@ -102,9 +109,15 @@ class Game {
         if (this.player) {
             const targetX = (this.mouseX / window.innerWidth) * 10 - 5;
             this.player.position.x += (targetX - this.player.position.x) * 0.1;
-            this.player.rotation.y = Math.atan2(targetX - this.player.position.x, 1);
+    
+            // Reverse the angle calculation to make the tank face the mouse
+            const angle = Math.atan2(this.player.position.x - targetX, 1);
+            this.player.rotation.y = -Math.PI / 2 + angle; // Offset by 90 degrees to align properly
         }
     }
+    
+    
+    
 
     animate() {
         requestAnimationFrame(() => this.animate());
